@@ -1,0 +1,33 @@
+# Виртуальное окружение
+venv/
+
+# Временная папка
+tmp/
+
+# Конфигурационные файлы с ключами
+app/core/config.py
+
+# Python кеш
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+*.db
+data/last_upload.jpg
+
+# ОС служебные файлы
+.DS_Store
+Thumbs.db
+
+# IDE служебные файлы
+.vscode/
+.idea/
+
+# Игнорировать всё содержимое images и yandex_images
+images/*
+yandex_images/*
+
+# Но оставить .gitkeep (чтобы папки не удалялись из гита)
+!images/.gitkeep
+!yandex_images/.gitkeep

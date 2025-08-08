@@ -1,0 +1,53 @@
+table.dataTable td {
+            white-space: normal !important;
+            word-break: break-word;
+        }
+
+        .symptom-badge {
+            white-space: normal !important;
+            word-break: break-word;
+        }
+
+        /* Нижнее меню фиксированное снизу */
+        #bottomMenu {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-top: 1px solid #dee2e6;
+            z-index: 1050;
+            padding: 0.5rem 0;
+        }
+
+        /* Контейнер для иконок с выравниванием */
+        #bottomMenu .btn {
+            flex-grow: 1;
+            border-radius: 0;
+            font-size: 1.5rem;
+            color: #212529;
+        }
+
+        /* Форма поиска поверх меню */
+        #searchBoxContainer {
+            position: fixed;
+            bottom: 3.5rem;
+            left: 0;
+            right: 0;
+            background: #fff;
+            padding: 0.5rem 1rem;
+            border-top: 1px solid #dee2e6;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1060;
+            display: none;
+        }
+
+        .dataTables_filter {
+            display: none !important;
+        }
+
+        /* Активная кнопка выбора картинки */
+        #btnUseGoogle.active, #btnUseYandex.active {
+            background-color: #0d6efd;
+            color: white;
+        }

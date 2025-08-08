@@ -1,0 +1,23 @@
+from pathlib import Path
+
+
+class Settings:
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    DATA_DIR = BASE_DIR / "data"
+
+    DB_PATH = DATA_DIR / "medcabinet.db"
+    IMAGE_DIR = BASE_DIR / "images"
+    IMAGE_YANDEX_DIR = BASE_DIR / "yandex_images"
+    LOG_FILE = DATA_DIR / "medcabinet.log"
+
+    # google search images
+    API_KEY = ""
+    CX = ""
+
+    # tg settings
+    TELEGRAM_BOT_TOKEN = ""
+    TELEGRAM_CHAT_IDS = [xxx, yyy]  #
+
+    APP_URL = "https://your.domain"
+
+settings = Settings()
