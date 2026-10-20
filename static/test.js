@@ -1,174 +1,151 @@
-const video = document.getElementById('video');
-const cameraSelect = document.getElementById('cameraSelect');
-const resultBox = document.getElementById('resultBox');
+const statusEl = document.getElementById('status');
 const medInfoCard = document.getElementById('medicineInfo');
 const medName = document.getElementById('medName');
 const medGTIN = document.getElementById('medGTIN');
 const medSerial = document.getElementById('medSerial');
 const medExp = document.getElementById('medExp');
 const medManufacturer = document.getElementById('medManufacturer');
+const medStatus = document.getElementById('medStatus');
 const addBtn = document.getElementById('addBtn');
+const rescanBtn = document.getElementById('rescanBtn');
 
-let stream;
+let html5QrCode = null;
 let currentMedicine = null;
+let scanning = false;
 
-async function getCameras() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(device => device.kind === 'videoinput');
-    cameraSelect.innerHTML = '';
-    videoDevices.forEach((device, index) => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.text = device.label || `Камера ${index + 1}`;
-        cameraSelect.appendChild(option);
-    });
-
-    if (videoDevices.length > 0) {
-        cameraSelect.value = videoDevices[videoDevices.length - 1].deviceId; // выбрать последнюю
-        await startCamera(cameraSelect.value);
-    }
+function setStatus(text, type = 'scanning') {
+    statusEl.textContent = text;
+    statusEl.className = `alert text-center status-${type}`;
+    statusEl.classList.remove('d-none');
 }
 
-async function startCamera(deviceId) {
-    if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-    }
-
-    stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-            deviceId: deviceId ? {exact: deviceId} : undefined
-        },
-        audio: false
-    });
-
-    video.srcObject = stream;
-}
-
-cameraSelect.addEventListener('change', () => {
-    const selectedId = cameraSelect.value;
-    startCamera(selectedId);
-});
-
-async function scanAndSend() {
-    if (!stream || video.readyState < 2) {
-        alert('Видео ещё не готово, подождите...');
-        return;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    resultBox.className = 'alert alert-info';
-    resultBox.textContent = '📤 Отправка изображения...';
-    resultBox.classList.remove('d-none');
-    medInfoCard.classList.add('d-none');
-
-    canvas.toBlob(async (blob) => {
-        if (!blob) {
-            resultBox.className = 'alert alert-danger';
-            resultBox.textContent = '❌ Не удалось создать изображение';
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('image', blob, 'snapshot.jpg');
-
+async function startScanner() {
+    if (html5QrCode && html5QrCode.isScanning) {
         try {
-            const res = await fetch('/scan-upload', {
-                method: 'POST',
-                body: formData
-            });
-            const raw = await res.text();
-            console.log("Ответ от сервера:", raw);
+            await html5QrCode.stop();
+        } catch (e) {}
+    }
 
-            const data = JSON.parse(raw);
+    if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+    }
 
-            if (data.success && data.medicine) {
-                const med = data.medicine;
-                currentMedicine = med;
+    scanning = true;
+    currentMedicine = null;
+    medInfoCard.classList.add('d-none');
+    setStatus('Запускаем камеру...', 'scanning');
 
-                medName.textContent = med.name || '';
-                medGTIN.textContent = med.gtin || '';
-                medSerial.textContent = med.serial_number || '';
-                medExp.textContent = med.expiration_date || '';
-                medManufacturer.textContent = med.manufacturer || '';
+    const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        formatsToSupport: [Html5QrcodeSupportedFormats.DATA_MATRIX]
+    };
 
-                // Проверяем в базе по serial_number
-                if (med.serial_number) {
-                    const findRes = await fetch(`/find_by_serial/${encodeURIComponent(med.serial_number)}`);
-                    const findData = await findRes.json();
-
-                    if (findData.found) {
-                        // Есть препарат — спрашиваем удалить
-                        const gtinRes = await fetch(`/count_by_gtin/${encodeURIComponent(med.gtin)}`);
-                        const gtinData = await gtinRes.json();
-
-                        if (gtinData.count === 1) {
-                            if (confirm(`Препарат "${findData.medicine.name}" с таким серийным номером единственный в базе. Хотите переместить его в архив?`)) {
-                                // Перемещаем в архив
-                                const archiveRes = await fetch(`/archive/${findData.medicine.id}`, {method: 'POST'});
-                                if (archiveRes.ok) {
-                                    alert('Препарат перемещён в архив.');
-                                    window.location.href = '/';
-                                } else {
-                                    alert('Ошибка при архивировании.');
-                                }
-                            } else {
-                                alert('Препарат в базе, переход на главную страницу.');
-                                window.location.href = '/';
-                            }
-                        } else {
-                            // более одного — удаляем
-                            if (confirm(`Препарат "${findData.medicine.name}" с таким серийным номером найден несколько раз. Хотите удалить его?`)) {
-                                const delRes = await fetch(`/delete/${findData.medicine.id}`, {method: 'DELETE'});
-                                if (delRes.ok) {
-                                    alert('Препарат удалён.');
-                                    window.location.href = '/';
-                                } else {
-                                    alert('Ошибка при удалении.');
-                                }
-                            } else {
-                                alert('Препарат в базе, переход на главную страницу.');
-                                window.location.href = '/';
-                            }
-                        }
-                        return; // прерываем дальнейшее добавление
-                    }
-                }
-
-                // Если препарата нет — показываем инфо и кнопку "Добавить"
-                resultBox.className = 'alert alert-success';
-                resultBox.textContent = '✅ Код распознан, лекарство найдено';
-                medInfoCard.classList.remove('d-none');
+    try {
+        // Пробуем заднюю камеру
+        await html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            onScanSuccess,
+            onScanFailure
+        );
+        setStatus('Ищем DataMatrix...', 'scanning');
+    } catch (err) {
+        console.warn("Environment camera failed, trying any camera", err);
+        try {
+            // Если не получилось — любую доступную
+            const cameras = await Html5Qrcode.getCameras();
+            if (cameras && cameras.length > 0) {
+                await html5QrCode.start(
+                    cameras[cameras.length - 1].id, // обычно задняя
+                    config,
+                    onScanSuccess,
+                    onScanFailure
+                );
+                setStatus('Ищем DataMatrix...', 'scanning');
             } else {
-                currentMedicine = null;
-                resultBox.className = 'alert alert-warning';
-                resultBox.textContent = '⚠️ Не удалось получить данные лекарства: ' + (data.error || '');
+                throw new Error("Камеры не найдены");
             }
-        } catch (err) {
-            currentMedicine = null;
-            resultBox.className = 'alert alert-danger';
-            resultBox.textContent = '❌ Ошибка при отправке: ' + err.message;
+        } catch (err2) {
+            setStatus('Не удалось запустить камеру. Нажмите кнопку ниже и разрешите доступ.', 'error');
+            showStartButton();
         }
-    }, 'image/jpeg', 0.95);
+    }
 }
 
-document.getElementById('scanBtn').addEventListener('click', scanAndSend);
+function showStartButton() {
+    let btn = document.getElementById('manualStartBtn');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'manualStartBtn';
+        btn.className = 'btn btn-primary w-100 mb-3';
+        btn.textContent = '📷 Запустить камеру';
+        btn.onclick = () => {
+            btn.remove();
+            startScanner();
+        };
+        statusEl.after(btn);
+    }
+}
+
+function onScanSuccess(decodedText, decodedResult) {
+    if (!scanning) return;
+    scanning = false;
+
+    setStatus('Код захвачен, отправляем на проверку...', 'sending');
+
+    html5QrCode.stop().then(() => {
+        checkCode(decodedText);
+    }).catch(() => {
+        checkCode(decodedText);
+    });
+}
+
+function onScanFailure(error) {
+    // Игнорируем — нормально, пока код не в кадре
+}
+
+async function checkCode(code) {
+    try {
+        const res = await fetch('/check-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+
+        if (data.success && data.medicine) {
+            currentMedicine = data.medicine;
+            showMedicine(data.medicine);
+            setStatus('Код распознан и проверен', 'found');
+        } else {
+            setStatus('Ошибка: ' + (data.error || 'неизвестная'), 'error');
+            setTimeout(startScanner, 2500);
+        }
+    } catch (err) {
+        setStatus('Ошибка сети: ' + err.message, 'error');
+        setTimeout(startScanner, 2500);
+    }
+}
+
+function showMedicine(med) {
+    medName.textContent = med.name || '—';
+    medGTIN.textContent = med.gtin || '—';
+    medSerial.textContent = med.serial_number || '—';
+    medExp.textContent = med.expiration_date || '—';
+    medManufacturer.textContent = med.manufacturer || '—';
+    medStatus.textContent = med.status || '—';
+    medInfoCard.classList.remove('d-none');
+}
 
 addBtn.addEventListener('click', async () => {
     if (!currentMedicine) return;
-
-    if (!confirm(`Добавить препарат "${currentMedicine.name}" в базу?`)) {
-        return;
-    }
+    if (!confirm(`Добавить "${currentMedicine.name}" в базу?`)) return;
 
     try {
         const res = await fetch('/add', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 code: currentMedicine.code || '',
                 name: currentMedicine.name || '',
@@ -179,29 +156,22 @@ addBtn.addEventListener('click', async () => {
                 symptoms: currentMedicine.symptoms || []
             })
         });
-
         const result = await res.json();
         if (result.status === 'ok') {
-            resultBox.className = 'alert alert-success';
-            resultBox.textContent = '✅ Лекарство добавлено в базу';
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 1500);
+            setStatus('Лекарство добавлено', 'found');
+            setTimeout(() => window.location.href = '/', 1200);
         } else {
-            resultBox.className = 'alert alert-danger';
-            resultBox.textContent = '❌ Не удалось добавить: ' + JSON.stringify(result);
+            setStatus('Не удалось добавить', 'error');
         }
     } catch (err) {
-        resultBox.className = 'alert alert-danger';
-        resultBox.textContent = '❌ Ошибка при добавлении: ' + err.message;
+        setStatus('Ошибка: ' + err.message, 'error');
     }
 });
 
-// Инициализация
-getCameras();
+rescanBtn.addEventListener('click', startScanner);
 
-$(document).ready(function () {
-    // Обработчики кнопок меню
-    $('#btnBack').click(() => window.history.back());
-    $('#btnHome').click(() => window.location.href = '/');
-});
+document.getElementById('btnBack').onclick = () => window.history.back();
+document.getElementById('btnHome').onclick = () => window.location.href = '/';
+
+// Пытаемся запустить сразу, если не получится — появится кнопка
+startScanner();
