@@ -31,3 +31,4 @@ yandex_images/*
 # Но оставить .gitkeep (чтобы папки не удалялись из гита)
 !images/.gitkeep
 !yandex_images/.gitkeep
+.aider*
